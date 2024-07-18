@@ -1,93 +1,135 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from lumibot.backtesting import YahooDataBacktesting
 from lumibot.strategies import Strategy
 
 class MomentumAndMeanReversion(Strategy):
     def initialize(self, symbols=None):
-        self.period = 20  # period in minutes
-        self.symbols = symbols or [
-            "AAPL", "MSFT", "GOOGL", "META", "TSLA", "NVDA", "NFLX"
-        ]
-        self.stop_loss_pct = 0.1
-        self.take_profit_pct = 0.2
+        self.period = 2
+        self.counter = 0
+        self.sleeptime = 0
+
+        if symbols:
+            self.symbols = symbols
+        else:
+            self.symbols = ["AAPL", "MSFT", "GOOGL", "META", "AMZN", "NFLX"]
+
+        self.momentum_asset = ""
+        self.mean_reversion_asset = ""
+        self.momentum_quantity = 0
+        self.mean_reversion_quantity = 0
         self.mean_reversion_threshold = 0.05
-        self.decay_factor = 0.01  # Adjust this value based on your strategy
-        self.portfolio_allocation = 0.5
 
     def on_trading_iteration(self):
-        momentums = self.get_assets_momentums()
-        mean_reversions = self.get_assets_mean_reversions()
+        if self.counter == self.period or self.counter == 0:
+            self.counter = 0
+            momentums = self.get_assets_momentums()
+            mean_reversions = self.get_assets_mean_reversions()
 
-        combined_scores = self.combine_momentum_mean_reversion(momentums, mean_reversions)
+            momentums.sort(key=lambda x: x.get("return"))
+            best_momentum_asset_data = momentums[-1]
+            best_momentum_asset = best_momentum_asset_data["symbol"]
+            best_momentum_asset_return = best_momentum_asset_data["return"]
 
-        combined_scores.sort(key=lambda x: x["score"], reverse=True)
-        best_asset_data = combined_scores[0]
-        best_asset = best_asset_data["symbol"]
-        best_asset_score = best_asset_data["score"]
-        best_asset_price = best_asset_data["price"]
+            mean_reversions.sort(key=lambda x: x.get("return"))
+            best_mean_reversion_asset_data = mean_reversions[0]
+            best_mean_reversion_asset = best_mean_reversion_asset_data["symbol"]
+            best_mean_reversion_asset_return = best_mean_reversion_asset_data["return"]
 
-        self.log_message(f"Best asset based on combined score: {best_asset} with score: {best_asset_score:.2f}")
+            if best_momentum_asset != self.momentum_asset:
+                if self.momentum_asset:
+                    self.log_message(f"Swapping {self.momentum_asset} for {best_momentum_asset} (Momentum)")
+                    order = self.create_order(self.momentum_asset, self.momentum_quantity, "sell")
+                    self.submit_order(order)
 
-        order_quantity = self.calculate_order_quantity(best_asset_price, best_asset_score)
+                self.momentum_asset = best_momentum_asset
+                best_momentum_asset_price = best_momentum_asset_data["price"]
+                self.momentum_quantity = int(self.portfolio_value * 0.5 // best_momentum_asset_price)
+                order = self.create_order(self.momentum_asset, self.momentum_quantity, "buy")
+                self.submit_order(order)
+            else:
+                self.log_message(f"Keeping {self.momentum_quantity} shares of {self.momentum_asset} (Momentum)")
 
-        if self.portfolio_value >= best_asset_price * order_quantity:
-            order = self.create_order(best_asset, order_quantity, "buy")
-            self.submit_order(order)
-            self.set_stop_loss_take_profit(best_asset, self.stop_loss_pct, self.take_profit_pct)
+            if abs(best_mean_reversion_asset_return) > self.mean_reversion_threshold:
+                if best_mean_reversion_asset != self.mean_reversion_asset:
+                    if self.mean_reversion_asset:
+                        self.log_message(f"Swapping {self.mean_reversion_asset} for {best_mean_reversion_asset} (Mean-Reversion)")
+                        order = self.create_order(self.mean_reversion_asset, self.mean_reversion_quantity, "sell")
+                        self.submit_order(order)
 
-    def calculate_order_quantity(self, price, score):
-        base_quantity = int(self.portfolio_value * self.portfolio_allocation // price)
-        decay_adjustment = 1 - self.decay_factor * score
-        adjusted_quantity = int(base_quantity * decay_adjustment)
-        return max(adjusted_quantity, 1)  # Ensure at least 1 share is bought
+                    self.mean_reversion_asset = best_mean_reversion_asset
+                    best_mean_reversion_asset_price = best_mean_reversion_asset_data["price"]
+                    self.mean_reversion_quantity = int(self.portfolio_value * 0.5 // best_mean_reversion_asset_price)
+                    order = self.create_order(self.mean_reversion_asset, self.mean_reversion_quantity, "buy")
+                    self.submit_order(order)
+                else:
+                    self.log_message(f"Keeping {self.mean_reversion_quantity} shares of {self.mean_reversion_asset} (Mean-Reversion)")
 
-    def combine_momentum_mean_reversion(self, momentums, mean_reversions):
-        combined_scores = []
-        for momentum in momentums:
-            for mean_reversion in mean_reversions:
-                if momentum["symbol"] == mean_reversion["symbol"]:
-                    combined_score = (momentum["return"] + mean_reversion["return"]) / 2
-                    combined_scores.append({
-                        "symbol": momentum["symbol"],
-                        "price": momentum["price"],
-                        "score": combined_score
-                    })
-                    break
-        return combined_scores
+        self.counter += 1
+        self.await_market_to_close()
+
+    def on_abrupt_closing(self):
+        return
+
+    def trace_stats(self, context, snapshot_before):
+        row = {
+            "old_momentum_asset": snapshot_before.get("momentum_asset"),
+            "old_mean_reversion_asset": snapshot_before.get("mean_reversion_asset"),
+            "old_momentum_quantity": snapshot_before.get("momentum_quantity"),
+            "old_mean_reversion_quantity": snapshot_before.get("mean_reversion_quantity"),
+            "old_cash": snapshot_before.get("cash"),
+            "new_momentum_asset": self.momentum_asset,
+            "new_mean_reversion_asset": self.mean_reversion_asset,
+            "new_momentum_quantity": self.momentum_quantity,
+            "new_mean_reversion_quantity": self.mean_reversion_quantity,
+        }
+
+        momentums = context.get("momentums")
+        mean_reversions = context.get("mean_reversions")
+        if momentums is not None and len(momentums) != 0:
+            for item in momentums:
+                symbol = item.get("symbol")
+                for key in item:
+                    if key != "symbol":
+                        row[f"{symbol}_momentum_{key}"] = item[key]
+
+        if mean_reversions is not None and len(mean_reversions) != 0:
+            for item in mean_reversions:
+                symbol = item.get("symbol")
+                for key in item:
+                    if key != "symbol":
+                        row[f"{symbol}_mean_reversion_{key}"] = item[key]
+
+        return row
 
     def get_assets_momentums(self):
         momentums = []
-        end_time = datetime.utcnow()
-        start_time = end_time - timedelta(minutes=self.period)
-        data = self.get_bars(self.symbols, start=start_time, end=end_time, timestep="minute")
+        start_date = self.get_round_day(timeshift=self.period + 1)
+        end_date = self.get_round_day(timeshift=1)
+        data = self.get_bars(self.symbols, self.period + 2, timestep="day")
         for asset, bars_set in data.items():
-            symbol = asset.symbol
-            symbol_momentum = bars_set.get_momentum(start=start_time, end=end_time)
-            self.log_message(f"{symbol} has a momentum return value of {100 * symbol_momentum:.2f}% over the last {self.period} minutes.")
-
-            momentums.append({"symbol": symbol, "price": bars_set.get_last_price(), "return": symbol_momentum})
-
+            try:
+                symbol = asset.symbol
+                symbol_momentum = bars_set.get_momentum(start=start_date, end=end_date)
+                self.log_message(f"{symbol} has a return value of {100 * symbol_momentum:.2f}% over the last {self.period} day(s).")
+                momentums.append({"symbol": symbol, "price": bars_set.get_last_price(), "return": symbol_momentum})
+            except Exception as e:
+                self.log_message(f"Error processing {asset.symbol}: {str(e)}")
         return momentums
 
     def get_assets_mean_reversions(self):
         mean_reversions = []
-        end_time = datetime.utcnow()
-        start_time = end_time - timedelta(minutes=self.period)
-        data = self.get_bars(self.symbols, start=start_time, end=end_time, timestep="minute")
+        start_date = self.get_round_day(timeshift=self.period + 1)
+        end_date = self.get_round_day(timeshift=1)
+        data = self.get_bars(self.symbols, self.period + 2, timestep="day")
         for asset, bars_set in data.items():
-            symbol = asset.symbol
-            symbol_return = bars_set.get_momentum(start=start_time, end=end_time)
-            self.log_message(f"{symbol} has a mean reversion return value of {100 * symbol_return:.2f}% over the last {self.period} minutes.")
-
-            mean_reversions.append({"symbol": symbol, "price": bars_set.get_last_price(), "return": symbol_return})
-
+            try:
+                symbol = asset.symbol
+                symbol_return = bars_set.get_momentum(start=start_date, end=end_date)
+                self.log_message(f"{symbol} has a return value of {100 * symbol_return:.2f}% over the last {self.period} day(s) (Mean-Reversion).")
+                mean_reversions.append({"symbol": symbol, "price": bars_set.get_last_price(), "return": symbol_return})
+            except Exception as e:
+                self.log_message(f"Error processing {asset.symbol}: {str(e)}")
         return mean_reversions
-
-    def set_stop_loss_take_profit(self, symbol, stop_loss_pct, take_profit_pct):
-        current_price = self.get_last_price(symbol)
-        stop_loss_price = current_price * (1 - stop_loss_pct)
-        take_profit_price = current_price * (1 + take_profit_pct)
-        self.create_order(symbol, self.portfolio_allocation, "sell", stop_price=stop_loss_price, take_profit_price=take_profit_price)
 
 if __name__ == "__main__":
     is_live = False
@@ -98,19 +140,22 @@ if __name__ == "__main__":
         from lumibot.traders import Trader
 
         trader = Trader()
+
         broker = Alpaca(ALPACA_CONFIG)
         strategy = MomentumAndMeanReversion(broker=broker)
         trader.add_strategy(strategy)
-        trader.run_all()
+        strategy_executors = trader.run_all()
+
     else:
         from lumibot.backtesting import YahooDataBacktesting
 
-        backtesting_start = datetime(2013, 1, 1)
-        backtesting_end = datetime(2023, 1, 1)
+        backtesting_start = datetime(2020, 1, 1)
+        backtesting_end = datetime(2024, 7, 1)
 
         results = MomentumAndMeanReversion.backtest(
             YahooDataBacktesting,
             backtesting_start,
             backtesting_end,
-            benchmark_asset="SPY",
-        )
+            benchmark_asset="VGT",
+            budget=10000)
+        
