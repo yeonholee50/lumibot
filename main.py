@@ -1,10 +1,9 @@
-from datetime import datetime
-from lumibot.backtesting import YahooDataBacktesting
-from lumibot.strategies import Strategy
-from datetime import datetime
+from lumibot.brokers import Alpaca
+from lumibot.strategies.strategy import Strategy
+from lumibot.traders import Trader
+from credentials import ALPACA_CONFIG
 
-
-class MomentumAndMeanReversion(Strategy):
+class MyStrategy(Strategy):
     def initialize(self, symbols=None):
         # Setting the waiting period (in days) for both strategies
         self.period = 2
@@ -19,7 +18,7 @@ class MomentumAndMeanReversion(Strategy):
         if symbols:
             self.symbols = symbols
         else:
-            self.symbols = ["GOOGL", "AAPL", "MSFT"]
+            self.symbols = ["AAPL", "MSFT", "GOOGL", "META", "TSLA", "NVDA", "NFLX"]
 
         # Initialize variables for momentum and mean-reversion strategies
         self.momentum_asset = ""
@@ -29,7 +28,7 @@ class MomentumAndMeanReversion(Strategy):
         self.mean_reversion_threshold = 0.05  # Example threshold for mean-reversion
 
     def on_trading_iteration(self):
-        if self.counter == self.period or self.counter == 0:
+        if self.broker.is_market_open() and (self.counter == self.period or self.counter == 0):
             self.counter = 0
             momentums = self.get_assets_momentums()
             mean_reversions = self.get_assets_mean_reversions()
@@ -46,6 +45,9 @@ class MomentumAndMeanReversion(Strategy):
             best_mean_reversion_asset = best_mean_reversion_asset_data["symbol"]
             best_mean_reversion_asset_return = best_mean_reversion_asset_data["return"]
 
+            available_cash = self.broker._get_balances_at_broker(None)[0]
+            
+
             # Momentum strategy: Check if we need to swap the asset
             if best_momentum_asset != self.momentum_asset:
                 if self.momentum_asset:
@@ -53,13 +55,20 @@ class MomentumAndMeanReversion(Strategy):
                     order = self.create_order(self.momentum_asset, self.momentum_quantity, "sell")
                     self.submit_order(order)
 
-                self.momentum_asset = best_momentum_asset
                 best_momentum_asset_price = best_momentum_asset_data["price"]
                 self.momentum_quantity = int(self.portfolio_value * 0.5 // best_momentum_asset_price)
-                order = self.create_order(self.momentum_asset, self.momentum_quantity, "buy")
-                self.submit_order(order)
+
+                if available_cash > 0 and available_cash >= best_momentum_asset_price * self.momentum_quantity:
+                    self.momentum_asset = best_momentum_asset
+                    order = self.create_order(self.momentum_asset, self.momentum_quantity, "buy")
+                    self.submit_order(order)
+                else:
+                    self.log_message(f"Not enough cash to buy {self.momentum_quantity} shares of {best_momentum_asset} (Momentum)")
             else:
                 self.log_message(f"Keeping {self.momentum_quantity} shares of {self.momentum_asset} (Momentum)")
+
+            available_cash = self.broker._get_balances_at_broker(None)[0]
+
 
             # Mean-reversion strategy: Check if we need to swap the asset
             if abs(best_mean_reversion_asset_return) > self.mean_reversion_threshold:
@@ -69,11 +78,15 @@ class MomentumAndMeanReversion(Strategy):
                         order = self.create_order(self.mean_reversion_asset, self.mean_reversion_quantity, "sell")
                         self.submit_order(order)
 
-                    self.mean_reversion_asset = best_mean_reversion_asset
                     best_mean_reversion_asset_price = best_mean_reversion_asset_data["price"]
                     self.mean_reversion_quantity = int(self.portfolio_value * 0.5 // best_mean_reversion_asset_price)
-                    order = self.create_order(self.mean_reversion_asset, self.mean_reversion_quantity, "buy")
-                    self.submit_order(order)
+
+                    if available_cash > 0 and available_cash >= best_mean_reversion_asset_price * self.mean_reversion_quantity:
+                        self.mean_reversion_asset = best_mean_reversion_asset
+                        order = self.create_order(self.mean_reversion_asset, self.mean_reversion_quantity, "buy")
+                        self.submit_order(order)
+                    else:
+                        self.log_message(f"Not enough cash to buy {self.mean_reversion_quantity} shares of {best_mean_reversion_asset} (Mean-Reversion)")
                 else:
                     self.log_message(f"Keeping {self.mean_reversion_quantity} shares of {self.mean_reversion_asset} (Mean-Reversion)")
 
@@ -81,7 +94,8 @@ class MomentumAndMeanReversion(Strategy):
         self.await_market_to_close()
 
     def on_abrupt_closing(self):
-        self.sell_all()
+        #self.sell_all()
+        return
 
     def trace_stats(self, context, snapshot_before):
         row = {
@@ -118,7 +132,7 @@ class MomentumAndMeanReversion(Strategy):
         momentums = []
         start_date = self.get_round_day(timeshift=self.period + 1)
         end_date = self.get_round_day(timeshift=1)
-        data = self.get_bars(self.symbols, self.period + 2, timestep="day")
+        data = self.get_historical_prices_for_assets(self.symbols, self.period + 2, timestep="day")
         for asset, bars_set in data.items():
             symbol = asset.symbol
             symbol_momentum = bars_set.get_momentum(start=start_date, end=end_date)
@@ -132,7 +146,7 @@ class MomentumAndMeanReversion(Strategy):
         mean_reversions = []
         start_date = self.get_round_day(timeshift=self.period + 1)
         end_date = self.get_round_day(timeshift=1)
-        data = self.get_bars(self.symbols, self.period + 2, timestep="day")
+        data = self.get_historical_prices_for_assets(self.symbols, self.period + 2, timestep="day")
         for asset, bars_set in data.items():
             symbol = asset.symbol
             symbol_return = bars_set.get_momentum(start=start_date, end=end_date)
@@ -144,27 +158,24 @@ class MomentumAndMeanReversion(Strategy):
 
 
 if __name__ == "__main__":
-    is_live = False
+    is_live = True
 
     if is_live:
-        from credentials import ALPACA_CONFIG
-        from lumibot.brokers import Alpaca
-        from lumibot.traders import Trader
-
         trader = Trader()
-
         broker = Alpaca(ALPACA_CONFIG)
-        strategy = MomentumAndMeanReversion(broker=broker)
-        trader.add_strategy(strategy)
-        strategy_executors = trader.run_all()
+        strategy = MyStrategy(broker=broker)
 
+        # Run the strategy live
+        trader.add_strategy(strategy)
+        trader.run_all()
     else:
         from lumibot.backtesting import YahooDataBacktesting
+        from datetime import datetime
 
-        backtesting_start = datetime(2020, 1, 1)
-        backtesting_end = datetime(2024, 6, 15)
+        backtesting_start = datetime(2013, 1, 1)
+        backtesting_end = datetime(2013, 5, 15)
 
-        results = MomentumAndMeanReversion.backtest(
+        results = MyStrategy.backtest(
             YahooDataBacktesting,
             backtesting_start,
             backtesting_end,
