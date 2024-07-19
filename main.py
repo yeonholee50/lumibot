@@ -25,7 +25,7 @@ class MyStrategy(Strategy):
         self.mean_reversion_asset = ""
         self.momentum_quantity = 0
         self.mean_reversion_quantity = 0
-        self.mean_reversion_threshold = 0.05  # Example threshold for mean-reversion
+        self.mean_reversion_threshold = 0.03  # Example threshold for mean-reversion
 
     def on_trading_iteration(self):
         if self.broker.is_market_open() and (self.counter == self.period or self.counter == 0):
