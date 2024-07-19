@@ -11,7 +11,7 @@ class MomentumAndMeanReversion(Strategy):
         if symbols:
             self.symbols = symbols
         else:
-            self.symbols = ["AAPL", "MSFT", "GOOGL", "META", "AMZN", "NFLX"]
+            self.symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NFLX"]
 
         self.momentum_asset = ""
         self.mean_reversion_asset = ""
@@ -149,13 +149,13 @@ if __name__ == "__main__":
     else:
         from lumibot.backtesting import YahooDataBacktesting
 
-        backtesting_start = datetime(2020, 1, 1)
+        backtesting_start = datetime(2010, 1, 1)
         backtesting_end = datetime(2024, 7, 1)
 
         results = MomentumAndMeanReversion.backtest(
             YahooDataBacktesting,
             backtesting_start,
             backtesting_end,
-            benchmark_asset="VGT",
+            benchmark_asset="SPY",
             budget=10000)
         
