@@ -5,8 +5,7 @@ from credentials import ALPACA_CONFIG
 from flask import Flask
 import os
 
-app = Flask(__name__)
-@app.route('/')
+
 class MyStrategy(Strategy):
     def initialize(self, symbols=None):
         # Setting the waiting period (in days) for both strategies
@@ -160,9 +159,9 @@ class MyStrategy(Strategy):
 
         return mean_reversions
 
-
-
-if __name__ == "__main__":
+app = Flask(__name__)
+@app.route('/')
+def main():
     is_live = True
 
     port = int(os.environ.get('PORT', 4000))
@@ -188,3 +187,6 @@ if __name__ == "__main__":
             backtesting_end,
             benchmark_asset="SPY",
         )
+
+if __name__ == "__main__":
+    main()
