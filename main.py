@@ -5,6 +5,8 @@ from credentials import ALPACA_CONFIG
 from flask import Flask
 import os
 
+app = Flask(__name__)
+@app.route('/')
 class MyStrategy(Strategy):
     def initialize(self, symbols=None):
         # Setting the waiting period (in days) for both strategies
@@ -158,9 +160,8 @@ class MyStrategy(Strategy):
 
         return mean_reversions
 
-app = Flask(__name__)
 
-@app.route('/')
+
 if __name__ == "__main__":
     is_live = True
 
