@@ -3,7 +3,7 @@ from lumibot.strategies.strategy import Strategy
 from lumibot.traders import Trader
 from credentials import ALPACA_CONFIG
 from flask import Flask
-@app.route('/')
+
 class MyStrategy(Strategy):
     def initialize(self, symbols=None):
         # Setting the waiting period (in days) for both strategies
