@@ -2,7 +2,8 @@ from lumibot.brokers import Alpaca
 from lumibot.strategies.strategy import Strategy
 from lumibot.traders import Trader
 from credentials import ALPACA_CONFIG
-
+from flask import Flask
+@app.route('/')
 class MyStrategy(Strategy):
     def initialize(self, symbols=None):
         # Setting the waiting period (in days) for both strategies
@@ -160,6 +161,9 @@ class MyStrategy(Strategy):
 if __name__ == "__main__":
     is_live = True
 
+    app = Flask(__name__)
+    port = int(os.environ.get('PORT', 4000))
+    app.run(host='0.0.0.0', port=port)
     if is_live:
         trader = Trader()
         broker = Alpaca(ALPACA_CONFIG)
@@ -173,7 +177,7 @@ if __name__ == "__main__":
         from datetime import datetime
 
         backtesting_start = datetime(2013, 1, 1)
-        backtesting_end = datetime(2013, 5, 15)
+        backtesting_end = datetime(2023, 5, 15)
 
         results = MyStrategy.backtest(
             YahooDataBacktesting,
