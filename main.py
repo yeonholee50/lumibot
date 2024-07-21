@@ -160,8 +160,7 @@ class MyStrategy(Strategy):
         return mean_reversions
 
 app = Flask(__name__)
-port = int(os.environ.get('PORT', 4000))
-app.run(host='0.0.0.0', port=port)
+
 @app.route('/')
 def main():
     is_live = True
@@ -190,4 +189,6 @@ def main():
         )
 
 if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 4000))
+    app.run(host='0.0.0.0', port=port)
     main()
