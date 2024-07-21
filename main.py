@@ -3,6 +3,7 @@ from lumibot.strategies.strategy import Strategy
 from lumibot.traders import Trader
 from credentials import ALPACA_CONFIG
 from flask import Flask
+import os
 
 class MyStrategy(Strategy):
     def initialize(self, symbols=None):
@@ -157,11 +158,12 @@ class MyStrategy(Strategy):
 
         return mean_reversions
 
+app = Flask(__name__)
 
+@app.route('/')
 if __name__ == "__main__":
     is_live = True
 
-    app = Flask(__name__)
     port = int(os.environ.get('PORT', 4000))
     app.run(host='0.0.0.0', port=port)
     if is_live:
