@@ -125,7 +125,7 @@ if __name__ == "__main__":
         ####
         # Run the strategy live
         ####
-        from credentials import ALPACA_CONFIG
+        from backtest_files.credentials import ALPACA_CONFIG
 
         trader = Trader()
         broker = Alpaca(ALPACA_CONFIG)

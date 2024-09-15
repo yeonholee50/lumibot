@@ -17,7 +17,7 @@ class MomentumAndMeanReversion(Strategy):
         self.mean_reversion_asset = ""
         self.momentum_quantity = 0
         self.mean_reversion_quantity = 0
-        self.mean_reversion_threshold = 0.05
+        self.mean_reversion_threshold = 0.1
 
     def on_trading_iteration(self):
         if self.counter == self.period or self.counter == 0:
@@ -40,27 +40,27 @@ class MomentumAndMeanReversion(Strategy):
                     self.log_message(f"Swapping {self.momentum_asset} for {best_momentum_asset} (Momentum)")
                     order = self.create_order(self.momentum_asset, self.momentum_quantity, "sell")
                     self.submit_order(order)
-
-                self.momentum_asset = best_momentum_asset
-                best_momentum_asset_price = best_momentum_asset_data["price"]
-                self.momentum_quantity = int(self.portfolio_value * 0.5 // best_momentum_asset_price)
-                order = self.create_order(self.momentum_asset, self.momentum_quantity, "buy")
-                self.submit_order(order)
+                if self.get_cash()/self.get_portfolio_value() > 0.025 or self.get_portfolio_value() < self.get_cash():
+                    self.momentum_asset = best_momentum_asset
+                    best_momentum_asset_price = best_momentum_asset_data["price"]
+                    self.momentum_quantity = int(self.portfolio_value * 0.5 // best_momentum_asset_price)
+                    order = self.create_order(self.momentum_asset, self.momentum_quantity, "buy")
+                    self.submit_order(order)
             else:
                 self.log_message(f"Keeping {self.momentum_quantity} shares of {self.momentum_asset} (Momentum)")
-
+            
             if abs(best_mean_reversion_asset_return) > self.mean_reversion_threshold:
                 if best_mean_reversion_asset != self.mean_reversion_asset:
                     if self.mean_reversion_asset:
                         self.log_message(f"Swapping {self.mean_reversion_asset} for {best_mean_reversion_asset} (Mean-Reversion)")
                         order = self.create_order(self.mean_reversion_asset, self.mean_reversion_quantity, "sell")
                         self.submit_order(order)
-
-                    self.mean_reversion_asset = best_mean_reversion_asset
-                    best_mean_reversion_asset_price = best_mean_reversion_asset_data["price"]
-                    self.mean_reversion_quantity = int(self.portfolio_value * 0.5 // best_mean_reversion_asset_price)
-                    order = self.create_order(self.mean_reversion_asset, self.mean_reversion_quantity, "buy")
-                    self.submit_order(order)
+                    if self.get_cash()/self.get_portfolio_value() > 0.025 or self.get_portfolio_value() < self.get_cash():
+                        self.mean_reversion_asset = best_mean_reversion_asset
+                        best_mean_reversion_asset_price = best_mean_reversion_asset_data["price"]
+                        self.mean_reversion_quantity = int(self.portfolio_value * 0.5 // best_mean_reversion_asset_price)
+                        order = self.create_order(self.mean_reversion_asset, self.mean_reversion_quantity, "buy")
+                        self.submit_order(order)
                 else:
                     self.log_message(f"Keeping {self.mean_reversion_quantity} shares of {self.mean_reversion_asset} (Mean-Reversion)")
 
@@ -149,13 +149,12 @@ if __name__ == "__main__":
     else:
         from lumibot.backtesting import YahooDataBacktesting
 
-        backtesting_start = datetime(2010, 1, 1)
-        backtesting_end = datetime(2024, 7, 1)
+        backtesting_start = datetime(2014, 1, 1)
+        backtesting_end = datetime(2024, 1, 1)
 
         results = MomentumAndMeanReversion.backtest(
             YahooDataBacktesting,
             backtesting_start,
             backtesting_end,
             benchmark_asset="SPY",
-            budget=10000)
-        
+            budget=50000)

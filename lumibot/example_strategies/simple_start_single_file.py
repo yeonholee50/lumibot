@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from credentials import AlpacaConfig
+from backtest_files.credentials import AlpacaConfig
 
 from lumibot.backtesting import YahooDataBacktesting
 from lumibot.brokers import Alpaca
